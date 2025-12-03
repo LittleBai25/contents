@@ -109,21 +109,21 @@ def main():
     st.set_page_config(page_title="PDF 标题识别实验工具", layout="wide")
     st.title("📄 PDF 标题候选识别 & 特征提取工具")
 
+    # 文件上传
     uploaded_file = st.file_uploader("请上传一个 PDF 文件", type=["pdf"])
 
     if not uploaded_file:
         st.info("👆 请先上传一个 PDF 文件。")
         return
 
-    # 调试信息：检查文件是否成功上传
-    st.write(f"已上传文件: {uploaded_file.name}")
-
+    # 读取上传的文件
     file_bytes = uploaded_file.read()
 
-    # 调试信息：检查文件大小
-    st.write(f"文件大小: {len(file_bytes)} bytes")
+    # 显示调试信息：上传的文件名称
+    st.write(f"已上传文件: {uploaded_file.name}")
 
     with st.spinner("正在解析 PDF..."):
+        # 解析PDF内容
         lines = parse_pdf_lines(file_bytes)
 
     if not lines:
@@ -135,11 +135,11 @@ def main():
     # 标记标题候选
     lines = mark_heading_candidates(lines)
 
-    # 转成 DataFrame 方便查看
+    # 转换为 DataFrame 方便查看
     import pandas as pd
     df = pd.DataFrame([asdict(l) for l in lines])
 
-    # 显示标记的标题
+    # 显示标记为标题的行
     st.subheader("疑似标题行")
     df_headings = df[df["is_heading"] == True]
     if df_headings.empty:
