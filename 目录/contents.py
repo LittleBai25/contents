@@ -3,6 +3,7 @@ from dataclasses import dataclass, asdict
 from typing import List, Optional
 import fitz  # PyMuPDF
 import streamlit as st
+import pandas as pd
 
 # 数据结构定义
 @dataclass
@@ -94,13 +95,12 @@ def mark_heading_candidates(
     body_size_median = (sorted(body_sizes)[len(body_sizes)//2] if body_sizes else 0)
 
     for l in lines:
-        # 调整标题识别的条件
         l.is_heading = (
             l.text and 
-            l.size >= body_size_median + size_delta_threshold and  # 字号大于正文的中位数
-            (l.spacing_before is None or l.spacing_before >= spacing_threshold) and  # 段前间距满足要求
-            len(l.text) <= max_title_len and  # 标题字数较短
-            not l.text.strip().endswith(("。", ".", "!", "！", "?", "？"))  # 排除以标点符号结尾的行
+            l.size >= body_size_median + size_delta_threshold and 
+            (l.spacing_before is None or l.spacing_before >= spacing_threshold) and 
+            len(l.text) <= max_title_len and 
+            not l.text.strip().endswith(("。", ".", "!", "！", "?", "？"))
         )
 
     return lines
@@ -138,8 +138,12 @@ def main():
 
     # 显示调试信息：显示所有行的特征，帮助诊断标题识别问题
     st.subheader("每行特征信息（供调试用）")
-    df = pd.DataFrame([asdict(l) for l in lines])
-    st.dataframe(df)
+    try:
+        # 转换为 DataFrame 方便查看
+        df = pd.DataFrame([asdict(l) for l in lines])
+        st.dataframe(df)
+    except Exception as e:
+        st.error(f"转换为DataFrame时发生错误: {e}")
 
     # 显示标记为标题的行
     st.subheader("疑似标题行")
