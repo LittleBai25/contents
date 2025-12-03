@@ -115,7 +115,13 @@ def main():
         st.info("👆 请先上传一个 PDF 文件。")
         return
 
+    # 调试信息：检查文件是否成功上传
+    st.write(f"已上传文件: {uploaded_file.name}")
+
     file_bytes = uploaded_file.read()
+
+    # 调试信息：检查文件大小
+    st.write(f"文件大小: {len(file_bytes)} bytes")
 
     with st.spinner("正在解析 PDF..."):
         lines = parse_pdf_lines(file_bytes)
