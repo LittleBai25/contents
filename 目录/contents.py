@@ -4,7 +4,6 @@ from typing import List, Optional
 import fitz  # PyMuPDF
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 
 # 数据结构定义
 @dataclass
@@ -19,6 +18,7 @@ class LineInfo:
     x1: float
     y1: float
     spacing_before: Optional[float] = None
+    spacing_after: Optional[float] = None
     is_heading: bool = False
 
 # PDF解析与特征提取
@@ -85,44 +85,33 @@ def compute_line_spacing(lines: List[LineInfo]) -> List[LineInfo]:
 
     return new_lines
 
-# 分类：根据字体大小、段前间距来简单分类文本行
-def classify_lines(df: pd.DataFrame, size_threshold=14, spacing_threshold=10):
-    """
-    通过字体大小、段前间距来简单分类文本行。
-    - 标题：字体大，段前间距大
-    - 正文：字体小，段前间距较小
-    """
-    df['classification'] = '正文'  # 默认是正文
-    df.loc[(df['size'] >= size_threshold) & (df['spacing_before'] >= spacing_threshold), 'classification'] = '标题'
+# 统计不同字体、字号、段前段后间距的出现次数
+def generate_statistics(df: pd.DataFrame):
+    # 字体统计
+    font_counts = df['font'].value_counts()
     
-    # 其他规则可以在这里添加
-    return df
+    # 字号统计
+    size_counts = df['size'].value_counts()
 
-# 标题候选识别
-def mark_heading_candidates(
-    lines: List[LineInfo],
-    size_delta_threshold: float = 2.0,
-    spacing_threshold: float = 4.0,
-    max_title_len: int = 80,
-) -> List[LineInfo]:
-    body_sizes = [l.size for l in lines if len(l.text) > 20]
-    body_size_median = (sorted(body_sizes)[len(body_sizes)//2] if body_sizes else 0)
+    # 字体和字号组合统计
+    font_size_counts = df.groupby(['font', 'size']).size().reset_index(name='count')
 
-    for l in lines:
-        l.is_heading = (
-            l.text and 
-            l.size >= body_size_median + size_delta_threshold and 
-            (l.spacing_before is None or l.spacing_before >= spacing_threshold) and 
-            len(l.text) <= max_title_len and 
-            not l.text.strip().endswith(("。", ".", "!", "！", "?", "？"))
-        )
+    # 段前间距统计
+    spacing_before_counts = df['spacing_before'].fillna(0).value_counts()
 
-    return lines
+    # 段后间距统计
+    spacing_after_counts = df['spacing_after'].fillna(0).value_counts()
+
+    # 段前和段后间距组合统计
+    df['spacing_combined'] = df.apply(lambda x: (x['spacing_before'], x['spacing_after']), axis=1)
+    spacing_combined_counts = df['spacing_combined'].value_counts()
+
+    return font_counts, size_counts, font_size_counts, spacing_before_counts, spacing_after_counts, spacing_combined_counts
 
 # Streamlit界面
 def main():
     st.set_page_config(page_title="PDF 标题识别实验工具", layout="wide")
-    st.title("📄 PDF 标题候选识别 & 特征提取工具")
+    st.title("📄 PDF 特征统计工具")
 
     uploaded_file = st.file_uploader("请上传一个 PDF 文件", type=["pdf"])
 
@@ -142,42 +131,30 @@ def main():
 
     st.success(f"解析完成，共获得 {len(lines)} 行文本。")
 
-    # 转换为DataFrame进行分类
+    # 转换为DataFrame
     df = pd.DataFrame([asdict(l) for l in lines])
 
-    # 分类：通过字体大小和段前间距进行简单分类
-    df_classified = classify_lines(df)
+    # 生成统计数据
+    font_counts, size_counts, font_size_counts, spacing_before_counts, spacing_after_counts, spacing_combined_counts = generate_statistics(df)
 
-    # 统计分类结果
-    classification_counts = df_classified['classification'].value_counts()
-    classification_percentage = df_classified['classification'].value_counts(normalize=True) * 100
+    # 显示统计数据
+    st.subheader("字体统计")
+    st.write(font_counts)
 
-    # 显示分类统计结果
-    st.subheader("分类统计结果")
-    st.write("各类文本行的数量：")
-    st.write(classification_counts)
-    
-    st.write("各类文本行的占比：")
-    st.write(classification_percentage)
+    st.subheader("字号统计")
+    st.write(size_counts)
 
-    # 可视化分类占比
-    fig, ax = plt.subplots()
-    classification_percentage.plot(kind='bar', ax=ax, color=['blue', 'green'])
-    ax.set_title('文本分类占比')
-    ax.set_ylabel('占比 (%)')
-    ax.set_xlabel('分类')
-    st.pyplot(fig)
+    st.subheader("字体和字号组合统计")
+    st.write(font_size_counts)
 
-    # 标记标题候选
-    lines = mark_heading_candidates(lines)
+    st.subheader("段前间距统计")
+    st.write(spacing_before_counts)
 
-    # 显示标记为标题的行
-    st.subheader("疑似标题行")
-    df_headings = df_classified[df_classified["classification"] == "标题"]
-    if df_headings.empty:
-        st.write("未识别出疑似标题行，请尝试调整参数。")
-    else:
-        st.dataframe(df_headings[['page', 'line_index', 'text', 'font', 'size', 'spacing_before']])
+    st.subheader("段后间距统计")
+    st.write(spacing_after_counts)
+
+    st.subheader("段前和段后间距组合统计")
+    st.write(spacing_combined_counts)
 
 if __name__ == "__main__":
     main()
