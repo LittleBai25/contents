@@ -4,6 +4,7 @@ from typing import List, Optional
 import fitz  # PyMuPDF
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
 
 # 数据结构定义
 @dataclass
@@ -84,6 +85,19 @@ def compute_line_spacing(lines: List[LineInfo]) -> List[LineInfo]:
 
     return new_lines
 
+# 分类：根据字体大小、段前间距来简单分类文本行
+def classify_lines(df: pd.DataFrame, size_threshold=14, spacing_threshold=10):
+    """
+    通过字体大小、段前间距来简单分类文本行。
+    - 标题：字体大，段前间距大
+    - 正文：字体小，段前间距较小
+    """
+    df['classification'] = '正文'  # 默认是正文
+    df.loc[(df['size'] >= size_threshold) & (df['spacing_before'] >= spacing_threshold), 'classification'] = '标题'
+    
+    # 其他规则可以在这里添加
+    return df
+
 # 标题候选识别
 def mark_heading_candidates(
     lines: List[LineInfo],
@@ -110,21 +124,16 @@ def main():
     st.set_page_config(page_title="PDF 标题识别实验工具", layout="wide")
     st.title("📄 PDF 标题候选识别 & 特征提取工具")
 
-    # 文件上传
     uploaded_file = st.file_uploader("请上传一个 PDF 文件", type=["pdf"])
 
     if not uploaded_file:
         st.info("👆 请先上传一个 PDF 文件。")
         return
 
-    # 读取上传的文件
     file_bytes = uploaded_file.read()
-
-    # 显示调试信息：上传的文件名称
     st.write(f"已上传文件: {uploaded_file.name}")
 
     with st.spinner("正在解析 PDF..."):
-        # 解析PDF内容
         lines = parse_pdf_lines(file_bytes)
 
     if not lines:
@@ -133,25 +142,42 @@ def main():
 
     st.success(f"解析完成，共获得 {len(lines)} 行文本。")
 
+    # 转换为DataFrame进行分类
+    df = pd.DataFrame([asdict(l) for l in lines])
+
+    # 分类：通过字体大小和段前间距进行简单分类
+    df_classified = classify_lines(df)
+
+    # 统计分类结果
+    classification_counts = df_classified['classification'].value_counts()
+    classification_percentage = df_classified['classification'].value_counts(normalize=True) * 100
+
+    # 显示分类统计结果
+    st.subheader("分类统计结果")
+    st.write("各类文本行的数量：")
+    st.write(classification_counts)
+    
+    st.write("各类文本行的占比：")
+    st.write(classification_percentage)
+
+    # 可视化分类占比
+    fig, ax = plt.subplots()
+    classification_percentage.plot(kind='bar', ax=ax, color=['blue', 'green'])
+    ax.set_title('文本分类占比')
+    ax.set_ylabel('占比 (%)')
+    ax.set_xlabel('分类')
+    st.pyplot(fig)
+
     # 标记标题候选
     lines = mark_heading_candidates(lines)
 
-    # 显示调试信息：显示所有行的特征，帮助诊断标题识别问题
-    st.subheader("每行特征信息（供调试用）")
-    try:
-        # 转换为 DataFrame 方便查看
-        df = pd.DataFrame([asdict(l) for l in lines])
-        st.dataframe(df)
-    except Exception as e:
-        st.error(f"转换为DataFrame时发生错误: {e}")
-
     # 显示标记为标题的行
     st.subheader("疑似标题行")
-    df_headings = df[df["is_heading"] == True]
+    df_headings = df_classified[df_classified["classification"] == "标题"]
     if df_headings.empty:
         st.write("未识别出疑似标题行，请尝试调整参数。")
     else:
-        st.dataframe(df_headings)
+        st.dataframe(df_headings[['page', 'line_index', 'text', 'font', 'size', 'spacing_before']])
 
 if __name__ == "__main__":
     main()
